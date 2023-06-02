@@ -7,13 +7,14 @@ from torchvision import datasets
 from torch.utils.data import DataLoader
 from torch.utils.data.sampler import SubsetRandomSampler
 import numpy as np
-import pickle
 import os
 import random
+import tqdm
 from resnet18 import ResNet
 # https://github.com/li554/resnet18-cifar10-classification
 # https://github.com/ZOMIN28/ResNet18_Cifar10_95.46/blob/main/utils/readData.py
 # https://github.com/ZQPei/transfer_learning_resnet18/blob/master/transfer_learning_finetuning.py
+# https://github.com/Mountchicken/ResNet18-CIFAR10/tree/main
 
 # pytorch关于heatmap和层Frozen
 # https://pytorch.org/tutorials/beginner/introyt/captumyt.html
@@ -43,6 +44,8 @@ test_loader = DataLoader(test_data,16)
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 model = ResNet()
+# cifar图像大小为3x32x32，原7x7卷积，最后一层pooling的输入维度是512x1x1，改用3x3卷积，最后一层pooling的输入维度是512x2x2
+model.conv1 = nn.Conv2d(3,64,kernel_size=3,stride=1,padding=1,bias=False)
 model.to(device)
 criterion = nn.CrossEntropyLoss()
 criterion.to(device)
@@ -50,6 +53,7 @@ criterion.to(device)
 epoch = 20
 count = 1
 lr = 0.1
+valid_loss_min = float('inf')
 for i in range(1,epoch+1):
 #整个训练集迭代一次，就验证一次
 #每在训练集迭代一次，学习率都可能进行调整，因此每迭代一次要重新创建优化器
@@ -61,8 +65,7 @@ for i in range(1,epoch+1):
     optimizer = optim.SGD(model.parameters(),lr=lr,momentum=0.9,weight_decay=5e-4)
     model.train()
     total_loss = 0.0
-    for i,(batch,labels) in enumerate(train_loader):
-        print(f'cur train batch is {i}')
+    for batch,labels in train_loader:
         batch = batch.to(device)
         labels = labels.to(device)
         # 五步：前向，计损，反传，更新，清零
@@ -73,7 +76,7 @@ for i in range(1,epoch+1):
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()
-    print(f'epoch:{epoch} | average train loss:{total_loss/40000}')    
+    print(f'epoch:{i} | average train loss:{total_loss/40000}')    
     model.eval()
     val_loss = 0.0
     correct = 0
@@ -87,6 +90,10 @@ for i in range(1,epoch+1):
             val_loss += loss.item()
             pred = torch.argmax(out,dim=1)
             correct += (pred==labels).sum().item()
-    print(f'epoch:{epoch} | average val loss:{val_loss/10000} | average precision:{correct/10000}') 
+    print(f'epoch:{i} | average val loss:{val_loss/10000} | average precision:{correct/10000}') 
+    print(f'epoch:{i} cur learning rate is {lr}')
+    if val_loss<valid_loss_min:
+        valid_loss_min = val_loss
+        torch.save(model.state_dict(),'checkpoint/epoch{:0>3}resnet18_cifar10.pt'.format(i))
     count = count+1
 
