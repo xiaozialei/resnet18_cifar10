@@ -9,7 +9,6 @@ from torch.utils.data.sampler import SubsetRandomSampler
 import numpy as np
 import os
 import random
-import tqdm
 from resnet18 import ResNet
 # https://github.com/li554/resnet18-cifar10-classification
 # https://github.com/ZOMIN28/ResNet18_Cifar10_95.46/blob/main/utils/readData.py
@@ -29,20 +28,21 @@ random.shuffle(total_ids)
 train_ids = total_ids[:split]
 val_ids   = total_ids[split:]
 # 再封装到batch之前，必须至少先转换为tensor数据。注意：变换后的图像是在batch中，不会改变原始数据
-transform = {'train':transforms.Compose([transforms.ToTensor(),
+transform = {'train':transforms.Compose([transforms.RandomCrop(32,padding=4),transforms.RandomHorizontalFlip()
+                                         ,transforms.ToTensor(),
                                          transforms.Normalize(mean=[0.485, 0.456, 0.406],std=[0.229, 0.224, 0.225])]),
               'test':transforms.Compose([transforms.ToTensor(),
                                          transforms.Normalize(mean=[0.485, 0.456, 0.406],std=[0.229, 0.224, 0.225])])}
 train_data = datasets.CIFAR10('.',train=True,transform=transform['train'],download=True)
 val_data = datasets.CIFAR10('.',train=True,transform=transform['test'],download=True)
 test_data = datasets.CIFAR10('.',train=False,transform=transform['test'],download=True)
-
-train_loader = DataLoader(train_data,16,sampler=SubsetRandomSampler(train_ids))
-val_loader = DataLoader(val_data,16,sampler=SubsetRandomSampler(val_ids))
-test_loader = DataLoader(test_data,16)
+#batch不足128时，不舍弃
+train_loader = DataLoader(train_data,128,sampler=SubsetRandomSampler(train_ids))
+val_loader = DataLoader(val_data,128,sampler=SubsetRandomSampler(val_ids))
+test_loader = DataLoader(test_data,128)
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
+print(f'cur device is {device}')
 model = ResNet()
 # cifar图像大小为3x32x32，原7x7卷积，最后一层pooling的输入维度是512x1x1，改用3x3卷积，最后一层pooling的输入维度是512x2x2
 model.conv1 = nn.Conv2d(3,64,kernel_size=3,stride=1,padding=1,bias=False)
@@ -50,10 +50,10 @@ model.to(device)
 criterion = nn.CrossEntropyLoss()
 criterion.to(device)
 
-epoch = 20
+epoch = 100
 count = 1
 lr = 0.1
-valid_loss_min = float('inf')
+accuracy_max = 0
 for i in range(1,epoch+1):
 #整个训练集迭代一次，就验证一次
 #每在训练集迭代一次，学习率都可能进行调整，因此每迭代一次要重新创建优化器
@@ -90,10 +90,11 @@ for i in range(1,epoch+1):
             val_loss += loss.item()
             pred = torch.argmax(out,dim=1)
             correct += (pred==labels).sum().item()
-    print(f'epoch:{i} | average val loss:{val_loss/10000} | average precision:{correct/10000}') 
+    cur_accuracy = correct/10000
+    print(f'epoch:{i} | average val loss:{val_loss/10000} | average precision:{cur_accuracy}') 
     print(f'epoch:{i} cur learning rate is {lr}')
-    if val_loss<valid_loss_min:
-        valid_loss_min = val_loss
+    if cur_accuracy>accuracy_max:
+        accuracy_max = cur_accuracy
         torch.save(model.state_dict(),'checkpoint/epoch{:0>3}resnet18_cifar10.pt'.format(i))
     count = count+1
-
+torch.save(model.state_dict(),'checkpoint/last_resnet18_cifar10.pt')

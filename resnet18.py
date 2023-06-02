@@ -61,7 +61,6 @@ class ResNet(nn.Module):
         x = self.layer2(x)
         x = self.layer3(x)
         x = self.layer4(x)
-        
         x = self.avgpool(x)
         #从通道(dim=1)开始展开，最底层逐渐合并，总的顺序是通道顺序
         #dim=0是batch，那么合并后的tensor就是(batch,channel)，同一个通道的数据全部都压缩成1维
@@ -121,6 +120,12 @@ if __name__=='__main__':
     # for key in cur_state_dict.keys():
     #     print(key)
     
-    model  = models.resnet18()
-    model.conv1 = nn.Conv2d(3,64,3,1,1)
-    print(model)
+    # model  = models.resnet18()
+    # model.conv1 = nn.Conv2d(3,64,3,1,1)
+    # print(model)
+    model = ResNet()
+    model.conv1 = nn.Conv2d(3,64,kernel_size=3,stride=1,padding=1,bias=False)
+    data = torch.randn(4,3,32,32)
+    output = model(data)
+    print(output.shape)
+    
